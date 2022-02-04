@@ -261,6 +261,21 @@ main(int argc, char *argv[])
     return 0;
 }
 
+static const char *
+kt_entry_flags_string(krb5_keytab_entry *entry)
+{
+    static char buf[32];
+    int i = 0;
+
+#if 0 /* flags defined yet */
+    if (entry->flags & KRB5_KTE_FLAG_X)
+        buf[i++] = 'X';
+#endif
+
+    buf[i] = '\0';
+    return buf;
+}
+
 static void
 do_keytab(const char *name)
 {
@@ -334,6 +349,11 @@ do_keytab(const char *name)
             printf(" ");
         }
         printf("%s", pname);
+        if (show_flags) {
+            const char *flags = kt_entry_flags_string(&entry);
+            if (flags && *flags)
+                printf(" Flags: %s" , flags);
+        }
         if (show_etype)
             printf(" (%s) " , etype_string(entry.key.enctype));
         if (show_keys) {
