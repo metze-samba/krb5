@@ -52,6 +52,7 @@
  *    krb5_timestamp timestamp;    time entry written to keytable
  *    krb5_kvno vno;               key version number
  *    krb5_keyblock key;           the secret key
+ *    krb5_ui_4 flags;
  *} krb5_keytab_entry;
  */
 
@@ -422,6 +423,7 @@ krb5_mkt_get_entry(krb5_context context, krb5_keytab id,
     if (match) {
         out_entry->magic = match->magic;
         out_entry->timestamp = match->timestamp;
+        out_entry->flags = match->flags;
         out_entry->vno = match->vno;
         out_entry->key = match->key;
         err = krb5_copy_keyblock_contents(context, &(match->key),
@@ -495,6 +497,7 @@ krb5_mkt_get_next(krb5_context context, krb5_keytab id, krb5_keytab_entry *entry
 
     entry->magic = mkt_cursor->entry->magic;
     entry->timestamp = mkt_cursor->entry->timestamp;
+    entry->flags = mkt_cursor->entry->flags;
     entry->vno = mkt_cursor->entry->vno;
     entry->key = mkt_cursor->entry->key;
     err = krb5_copy_keyblock_contents(context, &(mkt_cursor->entry->key),
@@ -545,6 +548,7 @@ krb5_mkt_add(krb5_context context, krb5_keytab id, krb5_keytab_entry *entry)
     }
     cursor->entry->magic = entry->magic;
     cursor->entry->timestamp = entry->timestamp;
+    cursor->entry->flags = entry->flags;
     cursor->entry->vno = entry->vno;
     err = krb5_copy_keyblock_contents(context, &(entry->key),
                                       &(cursor->entry->key));

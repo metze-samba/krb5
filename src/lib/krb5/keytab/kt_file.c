@@ -1094,6 +1094,19 @@ krb5_ktfileint_internal_read_entry(krb5_context context, krb5_keytab id, krb5_ke
             ret_entry->vno = vno32;
     }
 
+    /* Check for a 32-bit flags extension if four or more bytes remain. */
+    if (pos - start_pos + 8 <= size) {
+        uint32_t flags32;
+
+        if (!fread(&flags32, sizeof(flags32), 1, KTFILEP(id))) {
+            error = KRB5_KT_END;
+            goto fail;
+        }
+        if (KTVERSION(id) != KRB5_KT_VNO_1)
+            flags32 = ntohl(flags32);
+        ret_entry->flags = flags32;
+    }
+
     /*
      * Reposition file pointer to the next inter-record length field.
      */
@@ -1134,6 +1147,7 @@ krb5_ktfileint_write_entry(krb5_context context, krb5_keytab id, krb5_keytab_ent
     krb5_int32  size_needed;
     krb5_int32  commit_point = -1;
     uint32_t    vno32;
+    uint32_t    flags32;
     int         i;
 
     KTCHECKLOCK(id);
@@ -1241,6 +1255,13 @@ krb5_ktfileint_write_entry(krb5_context context, krb5_keytab id, krb5_keytab_ent
     if (KTVERSION(id) != KRB5_KT_VNO_1)
         vno32 = htonl(vno32);
     if (!fwrite(&vno32, sizeof(vno32), 1, KTFILEP(id)))
+        goto abend;
+
+    /* 32-bit flags */
+    flags32 = entry->flags;
+    if (KTVERSION(id) != KRB5_KT_VNO_1)
+        flags32 = htonl(flags32);
+    if (!fwrite(&flags32, sizeof(flags32), 1, KTFILEP(id)))
         goto abend;
 
     if (fflush(KTFILEP(id)))
