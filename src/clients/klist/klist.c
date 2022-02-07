@@ -267,10 +267,10 @@ kt_entry_flags_string(krb5_keytab_entry *entry)
     static char buf[32];
     int i = 0;
 
-#if 0 /* flags defined yet */
-    if (entry->flags & KRB5_KTE_FLAG_X)
-        buf[i++] = 'X';
-#endif
+    if (entry->flags & KRB5_KTE_FLAG_ACCEPTOR_IGNORE_TRANSITED)
+        buf[i++] = 'T';
+    if (entry->flags & KRB5_KTE_FLAG_ACCEPTOR_IGNORE_VNO)
+        buf[i++] = 'v';
 
     buf[i] = '\0';
     return buf;

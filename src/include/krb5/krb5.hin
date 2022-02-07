@@ -2697,6 +2697,8 @@ typedef struct krb5_keytab_entry_st {
     krb5_timestamp timestamp;   /**< Time entry written to keytable */
     krb5_kvno vno;              /**< Key version number */
     krb5_keyblock key;          /**< The secret key */
+#define KRB5_KTE_FLAG_ACCEPTOR_IGNORE_TRANSITED    0x00000001
+#define KRB5_KTE_FLAG_ACCEPTOR_IGNORE_VNO          0x00000002
     krb5_ui_4 flags;
 } krb5_keytab_entry;
 
