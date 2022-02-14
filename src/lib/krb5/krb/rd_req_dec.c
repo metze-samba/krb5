@@ -453,6 +453,7 @@ rd_req_decoded_opt(krb5_context context, krb5_auth_context *auth_context,
     krb5_enctype         *permitted_etypes = NULL;
     int                   permitted_etypes_len = 0;
     krb5_keyblock         decrypt_key;
+    krb5_boolean          ignore_transit_check = FALSE;
 
     decrypt_key.enctype = ENCTYPE_NULL;
     decrypt_key.contents = NULL;
@@ -482,6 +483,8 @@ rd_req_decoded_opt(krb5_context context, krb5_auth_context *auth_context,
             TRACE_RD_REQ_DECRYPT_FAIL(context, retval);
             goto cleanup;
         }
+        if (ent.flags & KRB5_KTE_FLAG_ACCEPTOR_IGNORE_TRANSITED)
+            ignore_transit_check = FALSE;
         /* place the principal of the keytab key in
          * req->ticket->server; always use this for later steps. */
         krb5_free_principal(context, req->ticket->server);
@@ -568,7 +571,7 @@ rd_req_decoded_opt(krb5_context context, krb5_auth_context *auth_context,
 
     /* Hierarchical Cross-Realm */
 
-    {
+    if (!ignore_transit_check) {
         krb5_data      * realm;
         krb5_transited * trans;
         krb5_flags       flags;
