@@ -285,46 +285,12 @@ is_matching(krb5_context context, krb5_const_principal princ)
                 context->ignore_acceptor_hostname));
 }
 
-/* Decrypt the ticket in req using the key in ent. */
-static krb5_error_code
-try_one_entry(krb5_context context, const krb5_ap_req *req,
-              krb5_keytab_entry *ent, krb5_keyblock *keyblock_out)
-{
-    krb5_error_code ret;
-    krb5_principal tmp = NULL;
-
-    /* Try decrypting the ticket with this entry's key. */
-    ret = krb5_decrypt_tkt_part(context, &ent->key, req->ticket);
-    if (ret)
-        return ret;
-
-    /* Make a copy of the principal for the ticket server field. */
-    ret = krb5_copy_principal(context, ent->principal, &tmp);
-    if (ret)
-        return ret;
-
-    /* Make a copy of the decrypting key if requested by the caller. */
-    if (keyblock_out != NULL) {
-        ret = krb5_copy_keyblock_contents(context, &ent->key, keyblock_out);
-        if (ret) {
-            krb5_free_principal(context, tmp);
-            return ret;
-        }
-    }
-
-    /* Make req->ticket->server indicate the actual server principal. */
-    krb5_free_principal(context, req->ticket->server);
-    req->ticket->server = tmp;
-
-    return 0;
-}
-
 /* Decrypt the ticket in req using a principal looked up from keytab.
  * explicit_server should be true if this is the only usable principal. */
 static krb5_error_code
 try_one_princ(krb5_context context, const krb5_ap_req *req,
               krb5_const_principal princ, krb5_keytab keytab,
-              krb5_boolean explicit_server, krb5_keyblock *keyblock_out)
+              krb5_boolean explicit_server, krb5_keytab_entry *entry_out)
 {
     krb5_error_code ret;
     krb5_keytab_entry ent;
@@ -337,9 +303,13 @@ try_one_princ(krb5_context context, const krb5_ap_req *req,
         return keytab_fetch_error(context, ret, princ, tkt_server, tkt_kvno,
                                   explicit_server);
     }
-    ret = try_one_entry(context, req, &ent, keyblock_out);
-    if (ret == 0)
+    /* Try decrypting the ticket with this entry's key. */
+    ret = krb5_decrypt_tkt_part(context, &ent.key, req->ticket);
+    if (ret == 0) {
         TRACE_RD_REQ_DECRYPT_SPECIFIC(context, ent.principal, &ent.key);
+        *entry_out = ent;
+        return 0;
+    }
     (void)krb5_free_keytab_entry_contents(context, &ent);
     if (ret == KRB5KRB_AP_ERR_BAD_INTEGRITY)
         return integrity_error(context, princ, req->ticket->server);
@@ -354,7 +324,7 @@ try_one_princ(krb5_context context, const krb5_ap_req *req,
 static krb5_error_code
 decrypt_try_server(krb5_context context, const krb5_ap_req *req,
                    krb5_const_principal server, krb5_keytab keytab,
-                   krb5_keyblock *keyblock_out)
+                   krb5_keytab_entry *entry_out)
 {
     krb5_error_code ret;
     krb5_keytab_entry ent;
@@ -373,7 +343,7 @@ decrypt_try_server(krb5_context context, const krb5_ap_req *req,
     /* If we have an explicit server principal, try just that one. */
     if (!is_matching(context, server)) {
         return try_one_princ(context, req, server, keytab, TRUE,
-                             keyblock_out);
+                             entry_out);
     }
 
     if (keytab->ops->start_seq_get == NULL) {
@@ -382,7 +352,7 @@ decrypt_try_server(krb5_context context, const krb5_ap_req *req,
         if (!krb5_sname_match(context, server, tkt_server))
             return nomatch_error(context, server, tkt_server);
         return try_one_princ(context, req, tkt_server, keytab, FALSE,
-                             keyblock_out);
+                             entry_out);
     }
 
     /* Scan all keys in the keytab, in case the ticket server is an alias for
@@ -421,9 +391,10 @@ decrypt_try_server(krb5_context context, const krb5_ap_req *req,
         if (similar_enctype) {
             /* Coerce inexact matches to the request enctype. */
             ent.key.enctype = tkt_etype;
-            if (try_one_entry(context, req, &ent, keyblock_out) == 0) {
+            ret = krb5_decrypt_tkt_part(context, &ent.key, req->ticket);
+            if (ret == 0) {
                 TRACE_RD_REQ_DECRYPT_ANY(context, ent.principal, &ent.key);
-                (void)krb5_free_keytab_entry_contents(context, &ent);
+                *entry_out = ent;
                 break;
             }
         }
@@ -445,7 +416,7 @@ decrypt_try_server(krb5_context context, const krb5_ap_req *req,
 static krb5_error_code
 decrypt_ticket(krb5_context context, const krb5_ap_req *req,
                krb5_const_principal server, krb5_keytab keytab,
-               krb5_keyblock *keyblock_out)
+               krb5_keytab_entry *entry_out)
 {
     krb5_error_code ret, dret = 0;
     struct canonprinc iter = { server, .no_hostrealm = TRUE };
@@ -453,14 +424,14 @@ decrypt_ticket(krb5_context context, const krb5_ap_req *req,
 
     /* Don't try to canonicalize if we're going to ignore hostnames. */
     if (k5_sname_wildcard_host(context, server))
-        return decrypt_try_server(context, req, server, keytab, keyblock_out);
+        return decrypt_try_server(context, req, server, keytab, entry_out);
 
     /* Try each canonicalization candidate for server.  If they all fail,
      * return the error from the last attempt. */
     while ((ret = k5_canonprinc(context, &iter, &canonprinc)) == 0 &&
            canonprinc != NULL) {
         dret = decrypt_try_server(context, req, canonprinc, keytab,
-                                  keyblock_out);
+                                  entry_out);
         /* Only continue if we found no keytab entries matching canonprinc. */
         if (dret != KRB5KRB_AP_ERR_NOKEY)
             break;
@@ -505,15 +476,23 @@ rd_req_decoded_opt(krb5_context context, krb5_auth_context *auth_context,
         if (server == NULL)
             server = req->ticket->server;
     } else {
-        retval = decrypt_ticket(context, req, server, keytab,
-                                check_valid_flag ? &decrypt_key : NULL);
+        krb5_keytab_entry ent = {};
+        retval = decrypt_ticket(context, req, server, keytab, &ent);
         if (retval) {
             TRACE_RD_REQ_DECRYPT_FAIL(context, retval);
             goto cleanup;
         }
-        /* decrypt_ticket placed the principal of the keytab key in
+        /* place the principal of the keytab key in
          * req->ticket->server; always use this for later steps. */
+        krb5_free_principal(context, req->ticket->server);
+        req->ticket->server = ent.principal;
+        ent.principal = NULL;
         server = req->ticket->server;
+        if (check_valid_flag) {
+            decrypt_key = ent.key;
+            ent.key.contents = NULL;
+        }
+        (void)krb5_free_keytab_entry_contents(context, &ent);
     }
     TRACE_RD_REQ_TICKET(context, req->ticket->enc_part2->client,
                         req->ticket->server, req->ticket->enc_part2->session);
