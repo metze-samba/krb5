@@ -484,7 +484,7 @@ rd_req_decoded_opt(krb5_context context, krb5_auth_context *auth_context,
             goto cleanup;
         }
         if (ent.flags & KRB5_KTE_FLAG_ACCEPTOR_IGNORE_TRANSITED)
-            ignore_transit_check = FALSE;
+            ignore_transit_check = TRUE;
         /* place the principal of the keytab key in
          * req->ticket->server; always use this for later steps. */
         krb5_free_principal(context, req->ticket->server);
