@@ -395,6 +395,7 @@ decrypt_try_server(krb5_context context, const krb5_ap_req *req,
             if (ret == 0) {
                 TRACE_RD_REQ_DECRYPT_ANY(context, ent.principal, &ent.key);
                 *entry_out = ent;
+                TRACE(context, "*entry_out->flags[0x%0x]\n", entry_out->flags);
                 break;
             }
         }
@@ -485,6 +486,7 @@ rd_req_decoded_opt(krb5_context context, krb5_auth_context *auth_context,
         }
         if (ent.flags & KRB5_KTE_FLAG_ACCEPTOR_IGNORE_TRANSITED)
             ignore_transit_check = TRUE;
+        TRACE(context, "ignore_transit_check=%u\n", ignore_transit_check);
         /* place the principal of the keytab key in
          * req->ticket->server; always use this for later steps. */
         krb5_free_principal(context, req->ticket->server);
